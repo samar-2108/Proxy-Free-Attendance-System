@@ -1,9 +1,13 @@
 const express = require('express');
+const path = require('path');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-require('dotenv').config();
+
+// Load environment variables (.env.local takes precedence over .env)
+require('dotenv').config({ path: path.resolve(__dirname, '.env.local') });
+require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 
 const app = express();
 
@@ -11,10 +15,16 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-// Database connection
-mongoose.connect(process.env.MONGODB_URI)
-  .then(() => console.log('✅ Connected to MongoDB'))
-  .catch(err => console.log('❌ MongoDB error:', err.message));
+// Database connection check middleware
+app.use('/api', (req, res, next) => {
+  if (req.path === '/test') return next();
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({ 
+      message: 'Database is not connected. Please verify your MongoDB connection.' 
+    });
+  }
+  next();
+});
 
 // User Model
 const userSchema = new mongoose.Schema({
@@ -103,32 +113,28 @@ const auth = async (req, res, next) => {
   }
 };
 
-// Initialize Admin
+// Initialize Admin (Non-destructive: preserves existing admin & user data)
 const initAdmin = async () => {
   try {
-    console.log('🔧 Checking admin account...');
-    
-    // First, delete any existing admin to avoid conflicts
-    await User.deleteMany({ role: 'admin' });
-    
-    const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
-    const hashedPassword = await bcrypt.hash(adminPassword, 10);
-    
-    const admin = await User.create({
-      name: 'System Administrator',
-      email: 'admin@school.com',
-      password: hashedPassword,
-      role: 'admin',
-      isActive: true
-    });
-    
-    console.log('✅ ADMIN ACCOUNT CREATED SUCCESSFULLY!');
-    console.log('📧 Email: admin@school.com');
-    console.log('🔑 Password: admin123');
-    console.log('👑 Role: Admin');
-    
+    const existingAdmin = await User.findOne({ role: 'admin' });
+    if (!existingAdmin) {
+      console.log('🔧 Initializing default administrator account...');
+      const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+      const hashedPassword = await bcrypt.hash(adminPassword, 10);
+      
+      await User.create({
+        name: 'System Administrator',
+        email: 'admin@school.com',
+        password: hashedPassword,
+        role: 'admin',
+        isActive: true
+      });
+      console.log('✅ Default administrator account created.');
+    } else {
+      console.log('ℹ️ Administrator account exists. Preserved existing database records.');
+    }
   } catch (error) {
-    console.log('❌ ERROR creating admin account:', error.message);
+    console.error('❌ Error initializing administrator account:', error.message);
   }
 };
 
@@ -557,9 +563,30 @@ app.get('/api/attendance/history', auth, async (req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, async () => {
-  await initAdmin();
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📱 API: http://localhost:${PORT}/api`);
-  console.log(`👑 Admin login: admin@school.com / admin123`);
-});
+
+// Start server only after establishing database connection
+const startServer = async () => {
+  try {
+    if (!process.env.MONGODB_URI) {
+      console.error('❌ MONGODB_URI environment variable is missing in backend/.env.local');
+      process.exit(1);
+    }
+
+    console.log('⏳ Connecting to MongoDB Atlas...');
+    await mongoose.connect(process.env.MONGODB_URI);
+    console.log('✅ Connected to MongoDB Atlas successfully.');
+
+    await initAdmin();
+
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`📱 API: http://localhost:${PORT}/api`);
+    });
+  } catch (err) {
+    // Sanitized error logging without exposing credentials or secrets
+    console.error('❌ MongoDB connection failure:', err.message);
+    process.exit(1);
+  }
+};
+
+startServer();

@@ -1,0 +1,23 @@
+{
+  "name": "proxy-free-attendance-system",
+  "version": "1.0.0",
+  "description": "Geofencing-based proxy-free attendance management system",
+  "scripts": {
+    "install:backend": "cd backend && npm install",
+    "install:frontend": "cd frontend && npm install",
+    "install:all": "npm run install:backend && npm run install:frontend",
+    "start:backend": "cd backend && npm start",
+    "start:frontend": "cd frontend && npm start",
+    "dev:backend": "cd backend && npm run dev"
+  },
+  "keywords": [
+    "attendance",
+    "geofencing",
+    "haversine",
+    "mern",
+    "location-based"
+  ],
+  "author": "",
+  "license": "ISC"
+}
+
